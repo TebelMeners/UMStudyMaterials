@@ -1,2 +1,2 @@
 # UMStudyMaterials
-Compiled Lecture Notes and Tutorial Problems from my UM Undergrad Study
+Compiled Lecture Notes and Tutorial Problems from my Undergrad Study
