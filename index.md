@@ -4,17 +4,25 @@ title: UM Study Materials
 ---
 
 <div id="app" style="margin-top: 20px;">
-  <p>Loading course modules...</p>
+  <p>Loading course materials...</p>
 </div>
 
 <script>
   const OWNER = 'TebelMeners';
   const REPO = 'UMStudyMaterials';
 
+  // Files to exclude from site listings
+  const IGNORE_FILES = ['readme.md', 'index.md', '_config.yml', 'desktop.ini', 'thumbs.db', '.ds_store'];
+
+  function isIgnored(path) {
+    const filename = path.split('/').pop().toLowerCase();
+    return filename.startsWith('.') || IGNORE_FILES.includes(filename);
+  }
+
   async function init() {
     const app = document.getElementById('app');
     const urlParams = new URLSearchParams(window.location.search);
-    const selectedFolder = urlParams.get('folder');
+    const currentPath = (urlParams.get('path') || urlParams.get('folder') || '').trim().replace(/\/+$|^\/+/g, '');
 
     try {
       const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/main?recursive=1`);
@@ -25,94 +33,114 @@ title: UM Study Materials
         return;
       }
 
-      if (selectedFolder) {
-        renderFolderView(app, data.tree, selectedFolder);
-      } else {
-        renderTopLevelView(app, data.tree);
-      }
+      renderPathView(app, data.tree, currentPath);
     } catch (e) {
       app.innerHTML = '<p>Error loading repository contents.</p>';
     }
   }
 
-  function renderTopLevelView(container, items) {
-    const topFolders = new Set();
+  function renderPathView(container, items, currentPath) {
+    const subfolders = new Set();
+    const directFiles = [];
+    const prefix = currentPath ? currentPath + '/' : '';
+
     items.forEach(item => {
-      if (item.path.startsWith('.') || item.path === 'README.md' || item.path === '_config.yml' || item.path === 'index.md') return;
-      const parts = item.path.split('/');
-      if (parts.length > 1 || item.type === 'tree') {
-        topFolders.add(parts[0]);
+      if (isIgnored(item.path)) return;
+
+      if (!currentPath) {
+        // Root directory level
+        const parts = item.path.split('/');
+        if (parts.length > 1 || item.type === 'tree') {
+          subfolders.add(parts[0]);
+        } else if (parts.length === 1 && item.type === 'blob') {
+          directFiles.push({ name: item.path, path: item.path });
+        }
+      } else {
+        // Inner directory level
+        if (item.path.startsWith(prefix)) {
+          const relPath = item.path.slice(prefix.length);
+          const parts = relPath.split('/');
+
+          if (parts.length > 1 || item.type === 'tree') {
+            subfolders.add(parts[0]);
+          } else if (parts.length === 1 && item.type === 'blob') {
+            directFiles.push({ name: parts[0], path: item.path });
+          }
+        }
       }
     });
 
-    if (topFolders.size === 0) {
-      container.innerHTML = '<p>No course folders found in repository.</p>';
-      return;
+    let html = '';
+
+    // Render Breadcrumb Navigation
+    html += renderBreadcrumbs(currentPath);
+
+    // Title Header
+    if (currentPath) {
+      const folderName = currentPath.split('/').pop();
+      html += `<h2 style="border-bottom: 2px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px;">📁 ${folderName}</h2>`;
+    } else {
+      html += `<h2 style="border-bottom: 2px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px;">Course Modules</h2>`;
     }
 
-    let html = '<h2>Course Modules</h2><div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 20px;">';
-    
-    Array.from(topFolders).sort().forEach(folder => {
-      html += `
-        <a href="?folder=${encodeURIComponent(folder)}" style="display: block; padding: 18px; border: 1px solid #e1e4e8; border-radius: 8px; text-decoration: none; color: #0366d6; background: #f6f8fa; font-weight: bold; text-align: center; transition: all 0.2s ease;">
-          📁 ${folder}
-        </a>
-      `;
-    });
-    
-    html += '</div>';
+    // Subfolders Section
+    if (subfolders.size > 0) {
+      html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">`;
+      Array.from(subfolders).sort().forEach(folder => {
+        const nextPath = currentPath ? `${currentPath}/${folder}` : folder;
+        html += `
+          <a href="?path=${encodeURIComponent(nextPath)}" style="display: flex; align-items: center; padding: 14px 18px; border: 1px solid #e1e4e8; border-radius: 8px; text-decoration: none; color: #0366d6; background: #f6f8fa; font-weight: 600; transition: background 0.2s ease;">
+            <span style="font-size: 1.2rem; margin-right: 8px;">📁</span> ${folder}
+          </a>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    // Direct Files Section
+    if (directFiles.length > 0) {
+      html += `<h3 style="margin-top: 10px; margin-bottom: 12px; font-size: 1.1rem; color: #57606a;">Files</h3>`;
+      html += `<ul style="list-style: none; padding-left: 0;">`;
+      directFiles.sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
+        html += `
+          <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center;">
+            <span style="margin-right: 10px;">📄</span>
+            <a href="${encodeURI(file.path)}" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500;">${file.name}</a>
+          </li>
+        `;
+      });
+      html += `</ul>`;
+    }
+
+    if (subfolders.size === 0 && directFiles.length === 0) {
+      html += `<p style="color: #6a737d;">This folder is empty.</p>`;
+    }
+
     container.innerHTML = html;
   }
 
-  function renderFolderView(container, items, folderName) {
-    const prefix = folderName + '/';
-    const subItems = items.filter(item => item.path === folderName || item.path.startsWith(prefix));
+  function renderBreadcrumbs(currentPath) {
+    let breadcrumbHtml = `<div style="margin-bottom: 20px; font-size: 1rem; color: #586069;">`;
+    breadcrumbHtml += `<a href="./" style="color: #0366d6; text-decoration: none; font-weight: bold;">🏠 Home</a>`;
 
-    if (subItems.length === 0) {
-      container.innerHTML = `<p><a href="./">← Back to All Courses</a></p><h2>${folderName}</h2><p>Folder is empty.</p>`;
-      return;
-    }
-
-    const tree = {};
-    subItems.forEach(item => {
-      if (item.path === folderName) return;
-      const relPath = item.path.slice(prefix.length);
-      const parts = relPath.split('/');
-      let curr = tree;
-      parts.forEach((part, idx) => {
-        if (!curr[part]) {
-          curr[part] = (idx === parts.length - 1 && item.type === 'blob') ? { _file: true, path: item.path } : {};
+    if (currentPath) {
+      const parts = currentPath.split('/');
+      let accumulatedPath = '';
+      
+      parts.forEach((part, index) => {
+        accumulatedPath += (index === 0 ? '' : '/') + part;
+        breadcrumbHtml += ` <span style="color: #a3aab1; margin: 0 6px;">/</span> `;
+        
+        if (index === parts.length - 1) {
+          breadcrumbHtml += `<span style="font-weight: bold; color: #24292e;">${part}</span>`;
+        } else {
+          breadcrumbHtml += `<a href="?path=${encodeURIComponent(accumulatedPath)}" style="color: #0366d6; text-decoration: none;">${part}</a>`;
         }
-        curr = curr[part];
       });
-    });
-
-    const breadcrumbs = `<div style="margin-bottom: 20px;"><a href="./" style="font-weight: bold; color: #0366d6; text-decoration: none;">← Back to All Courses</a></div>`;
-    const title = `<h2 style="border-bottom: 2px solid #eaecef; padding-bottom: 8px;">📁 ${folderName}</h2>`;
-    
-    container.innerHTML = breadcrumbs + title;
-    container.appendChild(buildHtmlTree(tree));
-  }
-
-  function buildHtmlTree(node) {
-    const ul = document.createElement('ul');
-    ul.style.listStyleType = 'none';
-    ul.style.paddingLeft = '20px';
-
-    for (const key in node) {
-      if (key === '_file' || key === 'path') continue;
-      const li = document.createElement('li');
-      li.style.margin = '8px 0';
-
-      if (node[key]._file) {
-        li.innerHTML = `📄 <a href="${encodeURI(node[key].path)}" target="_blank" style="color: #0366d6;">${key}</a>`;
-      } else {
-        li.innerHTML = `📁 <strong style="color: #24292e;">${key}</strong>`;
-        li.appendChild(buildHtmlTree(node[key]));
-      }
-      ul.appendChild(li);
     }
-    return ul;
+
+    breadcrumbHtml += `</div>`;
+    return breadcrumbHtml;
   }
 
   init();
