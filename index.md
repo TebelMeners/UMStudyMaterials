@@ -3,7 +3,7 @@ layout: default
 title: UM Study Materials
 ---
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <div id="app" style="margin-top: 20px;">
   <p>Loading course materials...</p>
@@ -15,6 +15,11 @@ title: UM Study Materials
   const BRANCH = 'main';
 
   const IGNORE_FILES = ['readme.md', 'index.md', '_config.yml', 'desktop.ini', 'thumbs.db', '.ds_store'];
+
+  // Helper for natural human sorting (e.g., "Topic 2" before "Topic 10")
+  function naturalSort(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
 
   function isIgnored(path) {
     const filename = path.split('/').pop().toLowerCase();
@@ -90,7 +95,9 @@ title: UM Study Materials
 
     if (subfolders.size > 0) {
       html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">`;
-      Array.from(subfolders).sort().forEach(folder => {
+      
+      // Sorted using natural human ordering
+      Array.from(subfolders).sort(naturalSort).forEach(folder => {
         const nextPath = currentPath ? `${currentPath}/${folder}` : folder;
         html += `
           <a href="?path=${encodeURIComponent(nextPath)}" style="display: flex; align-items: center; padding: 14px 18px; border: 1px solid #e1e4e8; border-radius: 8px; text-decoration: none; color: #0366d6; background: #f6f8fa; font-weight: 600;">
@@ -104,7 +111,9 @@ title: UM Study Materials
     if (directFiles.length > 0) {
       html += `<h3 style="margin-top: 10px; margin-bottom: 12px; font-size: 1.1rem; color: #57606a;">Files</h3>`;
       html += `<ul style="list-style: none; padding-left: 0;">`;
-      directFiles.sort((a, b) => a.name.localeCompare(b.name)).forEach(file => {
+      
+      // Sorted using natural human ordering
+      directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center;">
             <span style="margin-right: 10px;">📄</span>
