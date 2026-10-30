@@ -46,9 +46,28 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  function getFileUrl(path) {
+  // Fetches real file binary data, transparently resolving Git LFS pointer text files
+  async function getFileBlob(path) {
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return `https://github.com/${OWNER}/${REPO}/raw/${BRANCH}/${encodedSegments}`;
+    const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodedSegments}`;
+
+    const res = await fetch(rawUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const blob = await res.blob();
+
+    // Check if file is a Git LFS pointer text file (typically ~130 bytes)
+    if (blob.size < 500) {
+      const text = await blob.text();
+      if (text.startsWith('version https://git-lfs.github.io/spec/v1')) {
+        const mediaUrl = `https://media.githubusercontent.com/media/${OWNER}/${REPO}/${BRANCH}/${encodedSegments}`;
+        const mediaRes = await fetch(mediaUrl);
+        if (!mediaRes.ok) throw new Error(`LFS Media HTTP ${mediaRes.status}`);
+        return await mediaRes.blob();
+      }
+    }
+
+    return blob;
   }
 
   async function fetchTreeData() {
@@ -71,13 +90,12 @@ title: UM Study Materials
     throw new Error('Invalid repository data received.');
   }
 
-  // Opens files inline in native browser viewers by bypassing GitHub's attachment header
   async function previewFile(event, encodedPath) {
     event.preventDefault();
     const path = decodeURIComponent(encodedPath);
     const fileName = path.split('/').pop();
-    const fileUrl = getFileUrl(path);
 
+    // Open holding tab synchronously to prevent popup blockers on mobile & desktop
     const win = window.open('', '_blank');
     if (win) {
       win.document.write(`
@@ -94,9 +112,7 @@ title: UM Study Materials
     }
 
     try {
-      const res = await fetch(fileUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const rawBlob = await res.blob();
+      const rawBlob = await getFileBlob(path);
 
       const ext = fileName.split('.').pop().toLowerCase();
       let mimeType = rawBlob.type;
@@ -114,7 +130,7 @@ title: UM Study Materials
       }
     } catch (e) {
       if (win) win.close();
-      alert(`Could not open file inline: ${e.message}`);
+      alert(`Could not open file: ${e.message}`);
     }
   }
 
@@ -122,13 +138,10 @@ title: UM Study Materials
     event.preventDefault();
     const path = decodeURIComponent(encodedPath);
     const fileName = path.split('/').pop();
-    const fileUrl = getFileUrl(path);
 
     try {
       await ensureLibrariesLoaded();
-      const res = await fetch(fileUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
+      const blob = await getFileBlob(path);
       saveAs(blob, fileName);
     } catch (e) {
       alert(`Download failed: ${e.message}`);
@@ -214,15 +227,14 @@ title: UM Study Materials
       html += `<ul style="list-style: none; padding-left: 0;">`;
       
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
-        const fileUrl = getFileUrl(file.path);
         const safeFilePath = encodeURIComponent(file.path);
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
               <span style="margin-right: 10px;">📄</span>
-              <a href="${fileUrl}" onclick="previewFile(event, '${safeFilePath}')" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
+              <a href="#" onclick="previewFile(event, '${safeFilePath}')" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
             </div>
-            <a href="${fileUrl}" onclick="directDownloadFile(event, '${safeFilePath}')" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
+            <a href="#" onclick="directDownloadFile(event, '${safeFilePath}')" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
               📥 Direct Download
             </a>
           </li>
@@ -284,14 +296,7 @@ title: UM Study Materials
       const zip = new JSZip();
 
       for (const file of folderFiles) {
-        const fileUrl = getFileUrl(file.path);
-        const fileRes = await fetch(fileUrl);
-        
-        if (!fileRes.ok) {
-          throw new Error(`Failed to download ${file.path.split('/').pop()} (HTTP ${fileRes.status})`);
-        }
-
-        const blob = await fileRes.blob();
+        const blob = await getFileBlob(file.path);
         const relativePath = file.path.slice(prefix.length);
         zip.file(relativePath, blob);
       }
