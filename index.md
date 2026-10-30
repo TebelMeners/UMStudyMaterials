@@ -27,7 +27,7 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Generates absolute, segment-encoded URLs to fix mobile PDF viewer handoffs
+  // Generates absolute, segment-encoded same-origin URLs
   function getEncodedUrl(path) {
     const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
@@ -41,6 +41,11 @@ title: UM Study Materials
 
     try {
       const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
+      
+      if (!res.ok) {
+        throw new Error(`GitHub API error (HTTP ${res.status})`);
+      }
+
       const data = await res.json();
 
       if (!data.tree) {
@@ -50,7 +55,7 @@ title: UM Study Materials
 
       renderPathView(app, data.tree, currentPath);
     } catch (e) {
-      app.innerHTML = '<p>Error loading repository contents.</p>';
+      app.innerHTML = `<p>Error loading repository contents: ${e.message}</p>`;
     }
   }
 
@@ -174,6 +179,11 @@ title: UM Study Materials
 
     try {
       const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
+      
+      if (!res.ok) {
+        throw new Error(`GitHub Tree API limit reached or unreachable (HTTP ${res.status})`);
+      }
+
       const data = await res.json();
       
       const prefix = folderPath + '/';
@@ -189,7 +199,13 @@ title: UM Study Materials
       const zip = new JSZip();
 
       for (const file of folderFiles) {
-        const fileRes = await fetch(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(file.path)}`);
+        const fileUrl = getEncodedUrl(file.path);
+        const fileRes = await fetch(fileUrl);
+        
+        if (!fileRes.ok) {
+          throw new Error(`Failed to download ${file.path.split('/').pop()} (HTTP ${fileRes.status})`);
+        }
+
         const blob = await fileRes.blob();
         const relativePath = file.path.slice(prefix.length);
         zip.file(relativePath, blob);
@@ -203,7 +219,7 @@ title: UM Study Materials
       btn.innerText = '📦 Download Folder (.zip)';
       btn.disabled = false;
     } catch (e) {
-      alert('Failed to download files. Please try again.');
+      alert(`Download failed: ${e.message}`);
       btn.innerText = '📦 Download Folder (.zip)';
       btn.disabled = false;
     }
