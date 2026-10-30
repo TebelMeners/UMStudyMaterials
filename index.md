@@ -4,8 +4,7 @@ title: UM Study Materials
 ---
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" integrity="sha512-Qlv6VSL4I41e064972e01362e365022e37943486383a3036" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <div id="app" style="margin-top: 20px;">
   <p>Loading course materials...</p>
@@ -18,7 +17,7 @@ title: UM Study Materials
 
   const IGNORE_FILES = ['readme.md', 'index.md', '_config.yml', 'desktop.ini', 'thumbs.db', '.ds_store'];
 
-  // Helper for natural human sorting (e.g., "Topic 2" before "Topic 10")
+  // Natural human sorting (e.g. "Lecture 2" before "Lecture 10")
   function naturalSort(a, b) {
     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   }
@@ -84,7 +83,7 @@ title: UM Study Materials
     if (currentPath) {
       const folderName = currentPath.split('/').pop();
       html += `
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
           <h2 style="margin: 0;">📁 ${folderName}</h2>
           <button id="downloadBtn" onclick="downloadFolderZip('${currentPath}')" style="background-color: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
             📦 Download Folder (.zip)
@@ -98,11 +97,10 @@ title: UM Study Materials
     if (subfolders.size > 0) {
       html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px;">`;
       
-      // Sorted using natural human ordering
       Array.from(subfolders).sort(naturalSort).forEach(folder => {
         const nextPath = currentPath ? `${currentPath}/${folder}` : folder;
         html += `
-          <a href="?path=${encodeURIComponent(nextPath)}" style="display: flex; align-items: center; padding: 14px 18px; border: 1px solid #e1e4e8; border-radius: 8px; text-decoration: none; color: #0366d6; background: #f6f8fa; font-weight: 600;">
+          <a href="?path=${encodeURIComponent(nextPath)}" style="display: flex; align-items: center; padding: 14px 18px; border: 1px solid #e1e4e8; border-radius: 8px; text-decoration: none; color: #0366d6; background: #f6f8fa; font-weight: 600; transition: background 0.2s ease;">
             <span style="font-size: 1.2rem; margin-right: 8px;">📁</span> ${folder}
           </a>
         `;
@@ -114,7 +112,6 @@ title: UM Study Materials
       html += `<h3 style="margin-top: 10px; margin-bottom: 12px; font-size: 1.1rem; color: #57606a;">Files</h3>`;
       html += `<ul style="list-style: none; padding-left: 0;">`;
       
-      // Sorted using natural human ordering
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center;">
@@ -158,48 +155,23 @@ title: UM Study Materials
   }
 
   async function downloadFolderZip(folderPath) {
-  const btn = document.getElementById('downloadBtn');
-  btn.innerText = '⏳ Zipping files...';
-  btn.disabled = true;
+    const btn = document.getElementById('downloadBtn');
+    btn.innerText = '⏳ Zipping files...';
+    btn.disabled = true;
 
-  try {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
-    const data = await res.json();
-    
-    const prefix = folderPath + '/';
-    const folderFiles = data.tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
+    try {
+      const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
+      const data = await res.json();
+      
+      const prefix = folderPath + '/';
+      const folderFiles = data.tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
 
-    if (folderFiles.length === 0) {
-      alert('No downloadable files found in this folder.');
-      btn.innerText = '📦 Download Folder (.zip)';
-      btn.disabled = false;
-      return;
-    }
-
-    const zip = new JSZip();
-
-    for (const file of folderFiles) {
-      const fileRes = await fetch(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(file.path)}`);
-      const blob = await fileRes.blob();
-      const relativePath = file.path.slice(prefix.length);
-      zip.file(relativePath, blob);
-    }
-
-    // Generate blob with explicitly set zip MIME type
-    const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
-    const folderName = folderPath.split('/').pop();
-
-    // saveAs from FileSaver.js handles iOS Safari and Android Blob download fallbacks automatically
-    saveAs(zipBlob, `${folderName}.zip`);
-
-    btn.innerText = '📦 Download Folder (.zip)';
-    btn.disabled = false;
-  } catch (e) {
-    alert('Failed to download files. Please try again.');
-    btn.innerText = '📦 Download Folder (.zip)';
-    btn.disabled = false;
-  }
-}
+      if (folderFiles.length === 0) {
+        alert('No downloadable files found in this folder.');
+        btn.innerText = '📦 Download Folder (.zip)';
+        btn.disabled = false;
+        return;
+      }
 
       const zip = new JSZip();
 
@@ -210,14 +182,11 @@ title: UM Study Materials
         zip.file(relativePath, blob);
       }
 
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
       const folderName = folderPath.split('/').pop();
       
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = `${folderName}.zip`;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      // Mobile-compatible download trigger using FileSaver.js
+      saveAs(zipBlob, `${folderName}.zip`);
 
       btn.innerText = '📦 Download Folder (.zip)';
       btn.disabled = false;
