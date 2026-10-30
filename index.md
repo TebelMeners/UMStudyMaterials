@@ -46,7 +46,6 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Resolves both standard Git files and Git LFS binary pointers automatically
   function getFileUrl(path) {
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
     return `https://github.com/${OWNER}/${REPO}/raw/${BRANCH}/${encodedSegments}`;
@@ -70,6 +69,70 @@ title: UM Study Materials
       return data.tree;
     }
     throw new Error('Invalid repository data received.');
+  }
+
+  // Opens files inline in native browser viewers by bypassing GitHub's attachment header
+  async function previewFile(event, encodedPath) {
+    event.preventDefault();
+    const path = decodeURIComponent(encodedPath);
+    const fileName = path.split('/').pop();
+    const fileUrl = getFileUrl(path);
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(`
+        <html>
+          <head><title>Opening ${fileName}...</title></head>
+          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa;">
+            <div style="text-align: center; color: #24292e;">
+              <h2>⏳ Opening Document...</h2>
+              <p style="color: #57606a;">Loading ${fileName}</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const res = await fetch(fileUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rawBlob = await res.blob();
+
+      const ext = fileName.split('.').pop().toLowerCase();
+      let mimeType = rawBlob.type;
+      if (ext === 'pdf') mimeType = 'application/pdf';
+      else if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+
+      const inlineBlob = new Blob([rawBlob], { type: mimeType });
+      const blobUrl = URL.createObjectURL(inlineBlob);
+
+      if (win) {
+        win.location.href = blobUrl;
+      } else {
+        window.location.href = blobUrl;
+      }
+    } catch (e) {
+      if (win) win.close();
+      alert(`Could not open file inline: ${e.message}`);
+    }
+  }
+
+  async function directDownloadFile(event, encodedPath) {
+    event.preventDefault();
+    const path = decodeURIComponent(encodedPath);
+    const fileName = path.split('/').pop();
+    const fileUrl = getFileUrl(path);
+
+    try {
+      await ensureLibrariesLoaded();
+      const res = await fetch(fileUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      saveAs(blob, fileName);
+    } catch (e) {
+      alert(`Download failed: ${e.message}`);
+    }
   }
 
   async function init() {
@@ -152,13 +215,14 @@ title: UM Study Materials
       
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
         const fileUrl = getFileUrl(file.path);
+        const safeFilePath = encodeURIComponent(file.path);
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
               <span style="margin-right: 10px;">📄</span>
-              <a href="${fileUrl}" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
+              <a href="${fileUrl}" onclick="previewFile(event, '${safeFilePath}')" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
             </div>
-            <a href="${fileUrl}" download="${file.name}" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
+            <a href="${fileUrl}" onclick="directDownloadFile(event, '${safeFilePath}')" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
               📥 Direct Download
             </a>
           </li>
