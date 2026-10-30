@@ -46,10 +46,10 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Generates deterministic absolute URLs directly to the GitHub Pages site
-  function getEncodedUrl(path) {
+  // Generates segment-encoded URLs pointing directly to GitHub's raw content CDN
+  function getRawUrl(path) {
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return `https://${OWNER.toLowerCase()}.github.io/${REPO}/${encodedSegments}`;
+    return `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodedSegments}`;
   }
 
   async function fetchTreeData() {
@@ -151,7 +151,7 @@ title: UM Study Materials
       html += `<ul style="list-style: none; padding-left: 0;">`;
       
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
-        const fileUrl = getEncodedUrl(file.path);
+        const fileUrl = getRawUrl(file.path);
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
@@ -220,7 +220,7 @@ title: UM Study Materials
       const zip = new JSZip();
 
       for (const file of folderFiles) {
-        const fileUrl = getEncodedUrl(file.path);
+        const fileUrl = getRawUrl(file.path);
         const fileRes = await fetch(fileUrl);
         
         if (!fileRes.ok) {
