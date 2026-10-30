@@ -229,4 +229,24 @@ title: UM Study Materials
           throw new Error(`Failed to download ${file.path.split('/').pop()} (HTTP ${fileRes.status})`);
         }
 
-        const blob = await
+        const blob = await fileRes.blob();
+        const relativePath = file.path.slice(prefix.length);
+        zip.file(relativePath, blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+      const folderName = folderPath.split('/').pop();
+      
+      saveAs(zipBlob, `${folderName}.zip`);
+
+      btn.innerText = '📦 Download Folder (.zip)';
+      btn.disabled = false;
+    } catch (e) {
+      alert(`Download failed: ${e.message}`);
+      btn.innerText = '📦 Download Folder (.zip)';
+      btn.disabled = false;
+    }
+  }
+
+  init();
+</script>
