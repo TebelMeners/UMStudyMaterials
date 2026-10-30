@@ -3,8 +3,8 @@ layout: default
 title: UM Study Materials
 ---
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
 <div id="app" style="margin-top: 20px;">
   <p>Loading course materials...</p>
@@ -16,6 +16,26 @@ title: UM Study Materials
   const BRANCH = 'main';
 
   const IGNORE_FILES = ['readme.md', 'index.md', '_config.yml', 'desktop.ini', 'thumbs.db', '.ds_store'];
+
+  // Helper to dynamically load external libraries if static tags were blocked or deferred
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`Failed to load library script from ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureLibrariesLoaded() {
+    if (typeof JSZip === 'undefined') {
+      await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+    }
+    if (typeof saveAs === 'undefined') {
+      await loadScript('https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js');
+    }
+  }
 
   // Natural human sorting (e.g. "Lecture 2" before "Lecture 10")
   function naturalSort(a, b) {
@@ -43,7 +63,7 @@ title: UM Study Materials
       const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
       
       if (!res.ok) {
-        throw new Error(`GitHub API error (HTTP ${res.status})`);
+        throw new Error(`GitHub Tree API error (HTTP ${res.status})`);
       }
 
       const data = await res.json();
@@ -178,10 +198,13 @@ title: UM Study Materials
     btn.disabled = true;
 
     try {
+      // Ensure JSZip & FileSaver are dynamically loaded if mobile browser blocked static script tags
+      await ensureLibrariesLoaded();
+
       const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
       
       if (!res.ok) {
-        throw new Error(`GitHub Tree API limit reached or unreachable (HTTP ${res.status})`);
+        throw new Error(`GitHub Tree API error (HTTP ${res.status})`);
       }
 
       const data = await res.json();
@@ -206,24 +229,4 @@ title: UM Study Materials
           throw new Error(`Failed to download ${file.path.split('/').pop()} (HTTP ${fileRes.status})`);
         }
 
-        const blob = await fileRes.blob();
-        const relativePath = file.path.slice(prefix.length);
-        zip.file(relativePath, blob);
-      }
-
-      const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
-      const folderName = folderPath.split('/').pop();
-      
-      saveAs(zipBlob, `${folderName}.zip`);
-
-      btn.innerText = '📦 Download Folder (.zip)';
-      btn.disabled = false;
-    } catch (e) {
-      alert(`Download failed: ${e.message}`);
-      btn.innerText = '📦 Download Folder (.zip)';
-      btn.disabled = false;
-    }
-  }
-
-  init();
-</script>
+        const blob = await
