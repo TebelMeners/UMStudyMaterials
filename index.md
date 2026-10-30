@@ -10,6 +10,7 @@ title: UM Study Materials
   <p>Loading course materials...</p>
 </div>
 
+{% raw %}
 <script>
   const OWNER = 'TebelMeners';
   const REPO = 'UMStudyMaterials';
@@ -17,13 +18,12 @@ title: UM Study Materials
 
   const IGNORE_FILES = ['readme.md', 'index.md', '_config.yml', 'desktop.ini', 'thumbs.db', '.ds_store'];
 
-  // Helper to dynamically load external libraries if static tags were blocked or deferred
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = src;
       script.onload = resolve;
-      script.onerror = () => reject(new Error(`Failed to load library script from ${src}`));
+      script.onerror = () => reject(new Error(`Failed to load script from ${src}`));
       document.head.appendChild(script);
     });
   }
@@ -37,7 +37,6 @@ title: UM Study Materials
     }
   }
 
-  // Natural human sorting (e.g. "Lecture 2" before "Lecture 10")
   function naturalSort(a, b) {
     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   }
@@ -47,11 +46,30 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Generates absolute, segment-encoded same-origin URLs
+  // Encodes each path segment relative to site root to prevent 404 errors on desktop and mobile
   function getEncodedUrl(path) {
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return `${baseUrl}/${encodedSegments}`;
+    return './' + encodedSegments;
+  }
+
+  async function fetchTreeData() {
+    const cacheKey = `gh_tree_${OWNER}_${REPO}_${BRANCH}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { sessionStorage.removeItem(cacheKey); }
+    }
+
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
+    if (!res.ok) {
+      throw new Error(`GitHub Tree API error (HTTP ${res.status})`);
+    }
+
+    const data = await res.json();
+    if (data && data.tree) {
+      try { sessionStorage.setItem(cacheKey, JSON.stringify(data.tree)); } catch (e) {}
+      return data.tree;
+    }
+    throw new Error('Invalid repository data received.');
   }
 
   async function init() {
@@ -60,22 +78,10 @@ title: UM Study Materials
     const currentPath = (urlParams.get('path') || urlParams.get('folder') || '').trim().replace(/\/+$|^\/+/g, '');
 
     try {
-      const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
-      
-      if (!res.ok) {
-        throw new Error(`GitHub Tree API error (HTTP ${res.status})`);
-      }
-
-      const data = await res.json();
-
-      if (!data.tree) {
-        app.innerHTML = '<p>Error loading repository data.</p>';
-        return;
-      }
-
-      renderPathView(app, data.tree, currentPath);
+      const tree = await fetchTreeData();
+      renderPathView(app, tree, currentPath);
     } catch (e) {
-      app.innerHTML = `<p>Error loading repository contents: ${e.message}</p>`;
+      app.innerHTML = `<p style="color: #cb2431; font-weight: bold;">Error loading directory: ${e.message}</p>`;
     }
   }
 
@@ -109,15 +115,15 @@ title: UM Study Materials
     });
 
     let html = '';
-
     html += renderBreadcrumbs(currentPath);
 
     if (currentPath) {
       const folderName = currentPath.split('/').pop();
+      const safePath = encodeURIComponent(currentPath);
       html += `
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eaecef; padding-bottom: 8px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
           <h2 style="margin: 0;">📁 ${folderName}</h2>
-          <button id="downloadBtn" onclick="downloadFolderZip('${currentPath}')" style="background-color: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+          <button id="downloadBtn" data-path="${safePath}" onclick="downloadFolderZip(decodeURIComponent(this.dataset.path))" style="background-color: #2ea44f; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
             📦 Download Folder (.zip)
           </button>
         </div>
@@ -198,19 +204,11 @@ title: UM Study Materials
     btn.disabled = true;
 
     try {
-      // Ensure JSZip & FileSaver are dynamically loaded if mobile browser blocked static script tags
       await ensureLibrariesLoaded();
 
-      const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
-      
-      if (!res.ok) {
-        throw new Error(`GitHub Tree API error (HTTP ${res.status})`);
-      }
-
-      const data = await res.json();
-      
+      const tree = await fetchTreeData();
       const prefix = folderPath + '/';
-      const folderFiles = data.tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
+      const folderFiles = tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
 
       if (folderFiles.length === 0) {
         alert('No downloadable files found in this folder.');
@@ -250,3 +248,4 @@ title: UM Study Materials
 
   init();
 </script>
+{% endraw %}
