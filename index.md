@@ -27,6 +27,13 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
+  // Generates absolute, segment-encoded URLs to fix mobile PDF viewer handoffs
+  function getEncodedUrl(path) {
+    const baseUrl = window.location.origin + window.location.pathname.replace(/\/+$/, '');
+    const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `${baseUrl}/${encodedSegments}`;
+  }
+
   async function init() {
     const app = document.getElementById('app');
     const urlParams = new URLSearchParams(window.location.search);
@@ -113,10 +120,16 @@ title: UM Study Materials
       html += `<ul style="list-style: none; padding-left: 0;">`;
       
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
+        const fileUrl = getEncodedUrl(file.path);
         html += `
-          <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center;">
-            <span style="margin-right: 10px;">📄</span>
-            <a href="${encodeURI(file.path)}" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500;">${file.name}</a>
+          <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
+              <span style="margin-right: 10px;">📄</span>
+              <a href="${fileUrl}" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
+            </div>
+            <a href="${fileUrl}" download="${file.name}" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
+              📥 Direct Download
+            </a>
           </li>
         `;
       });
@@ -185,7 +198,6 @@ title: UM Study Materials
       const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
       const folderName = folderPath.split('/').pop();
       
-      // Mobile-compatible download trigger using FileSaver.js
       saveAs(zipBlob, `${folderName}.zip`);
 
       btn.innerText = '📦 Download Folder (.zip)';
