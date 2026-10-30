@@ -4,6 +4,8 @@ title: UM Study Materials
 ---
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" integrity="sha512-Qlv6VSL4I41e064972e01362e365022e37943486383a3036" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1ACc/Xgy5/GQNLUB36215iX226WpQQH11C/xJ6zYNf/vEaLz410F03M/Ld++Yn2/0m==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <div id="app" style="margin-top: 20px;">
   <p>Loading course materials...</p>
@@ -156,23 +158,48 @@ title: UM Study Materials
   }
 
   async function downloadFolderZip(folderPath) {
-    const btn = document.getElementById('downloadBtn');
-    btn.innerText = '⏳ Zipping files...';
-    btn.disabled = true;
+  const btn = document.getElementById('downloadBtn');
+  btn.innerText = '⏳ Zipping files...';
+  btn.disabled = true;
 
-    try {
-      const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
-      const data = await res.json();
-      
-      const prefix = folderPath + '/';
-      const folderFiles = data.tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
+  try {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`);
+    const data = await res.json();
+    
+    const prefix = folderPath + '/';
+    const folderFiles = data.tree.filter(item => item.type === 'blob' && item.path.startsWith(prefix) && !isIgnored(item.path));
 
-      if (folderFiles.length === 0) {
-        alert('No downloadable files found in this folder.');
-        btn.innerText = '📦 Download Folder (.zip)';
-        btn.disabled = false;
-        return;
-      }
+    if (folderFiles.length === 0) {
+      alert('No downloadable files found in this folder.');
+      btn.innerText = '📦 Download Folder (.zip)';
+      btn.disabled = false;
+      return;
+    }
+
+    const zip = new JSZip();
+
+    for (const file of folderFiles) {
+      const fileRes = await fetch(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodeURI(file.path)}`);
+      const blob = await fileRes.blob();
+      const relativePath = file.path.slice(prefix.length);
+      zip.file(relativePath, blob);
+    }
+
+    // Generate blob with explicitly set zip MIME type
+    const zipBlob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+    const folderName = folderPath.split('/').pop();
+
+    // saveAs from FileSaver.js handles iOS Safari and Android Blob download fallbacks automatically
+    saveAs(zipBlob, `${folderName}.zip`);
+
+    btn.innerText = '📦 Download Folder (.zip)';
+    btn.disabled = false;
+  } catch (e) {
+    alert('Failed to download files. Please try again.');
+    btn.innerText = '📦 Download Folder (.zip)';
+    btn.disabled = false;
+  }
+}
 
       const zip = new JSZip();
 
