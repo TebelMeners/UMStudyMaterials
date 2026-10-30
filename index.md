@@ -46,10 +46,10 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Encodes each path segment relative to site root to prevent 404 errors on desktop and mobile
+  // Generates deterministic absolute URLs directly to the GitHub Pages site
   function getEncodedUrl(path) {
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return './' + encodedSegments;
+    return `https://${OWNER.toLowerCase()}.github.io/${REPO}/${encodedSegments}`;
   }
 
   async function fetchTreeData() {
