@@ -46,19 +46,13 @@ title: UM Study Materials
     return filename.startsWith('.') || IGNORE_FILES.includes(filename);
   }
 
-  // Generates GitHub raw routing URLs that natively resolve Git LFS pointers for browser viewing
-  function getFileUrl(path) {
-    const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return `https://github.com/${OWNER}/${REPO}/raw/${BRANCH}/${encodedSegments}`;
-  }
-
-  // Fetches binary blobs for JSZip archive generation
-  async function getFileBlobForZip(path) {
+  // Fetches file blobs from CORS-capable media endpoints, handling both LFS and standard files
+  async function getFileBlob(path) {
     const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
     const mediaUrl = `https://media.githubusercontent.com/media/${OWNER}/${REPO}/${BRANCH}/${encodedSegments}`;
     const rawUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${encodedSegments}`;
 
-    // Try media CDN first for Git LFS files
+    // Try media CDN first for Git LFS tracked binaries
     try {
       const res = await fetch(mediaUrl);
       if (res.ok) {
@@ -95,6 +89,71 @@ title: UM Study Materials
       return data.tree;
     }
     throw new Error('Invalid repository data received.');
+  }
+
+  // Opens files inline in native browser tab readers without forcing downloads
+  async function previewFile(event, encodedPath) {
+    event.preventDefault();
+    const path = decodeURIComponent(encodedPath);
+    const fileName = path.split('/').pop();
+    const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(`
+        <html>
+          <head><title>Opening ${fileName}...</title></head>
+          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa;">
+            <div style="text-align: center; color: #24292e;">
+              <h2>⏳ Opening Document...</h2>
+              <p style="color: #57606a;">Loading ${fileName}</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const rawBlob = await getFileBlob(path);
+
+      const ext = fileName.split('.').pop().toLowerCase();
+      let mimeType = rawBlob.type;
+      if (ext === 'pdf') mimeType = 'application/pdf';
+      else if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+
+      const inlineBlob = new Blob([rawBlob], { type: mimeType });
+      const blobUrl = URL.createObjectURL(inlineBlob);
+
+      if (win) {
+        win.location.href = blobUrl;
+      } else {
+        window.location.href = blobUrl;
+      }
+    } catch (e) {
+      // Fallback to GitHub's native viewer page if blob creation fails
+      const fallbackUrl = `https://github.com/${OWNER}/${REPO}/blob/${BRANCH}/${encodedSegments}`;
+      if (win) {
+        win.location.href = fallbackUrl;
+      } else {
+        window.open(fallbackUrl, '_blank');
+      }
+    }
+  }
+
+  async function directDownloadFile(event, encodedPath) {
+    event.preventDefault();
+    const path = decodeURIComponent(encodedPath);
+    const fileName = path.split('/').pop();
+
+    try {
+      await ensureLibrariesLoaded();
+      const blob = await getFileBlob(path);
+      saveAs(blob, fileName);
+    } catch (e) {
+      const encodedSegments = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+      window.location.href = `https://github.com/${OWNER}/${REPO}/raw/${BRANCH}/${encodedSegments}`;
+    }
   }
 
   async function init() {
@@ -176,14 +235,14 @@ title: UM Study Materials
       html += `<ul style="list-style: none; padding-left: 0;">`;
       
       directFiles.sort((a, b) => naturalSort(a.name, b.name)).forEach(file => {
-        const fileUrl = getFileUrl(file.path);
+        const safeFilePath = encodeURIComponent(file.path);
         html += `
           <li style="padding: 10px 14px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
               <span style="margin-right: 10px;">📄</span>
-              <a href="${fileUrl}" target="_blank" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
+              <a href="#" onclick="previewFile(event, '${safeFilePath}')" style="color: #0366d6; text-decoration: none; font-weight: 500; word-break: break-word;">${file.name}</a>
             </div>
-            <a href="${fileUrl}" download="${file.name}" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
+            <a href="#" onclick="directDownloadFile(event, '${safeFilePath}')" style="font-size: 0.85rem; color: #0366d6; text-decoration: none; border: 1px solid #d1d5da; padding: 4px 10px; border-radius: 6px; background-color: #f6f8fa; font-weight: 500; white-space: nowrap;">
               📥 Direct Download
             </a>
           </li>
@@ -245,7 +304,7 @@ title: UM Study Materials
       const zip = new JSZip();
 
       for (const file of folderFiles) {
-        const blob = await getFileBlobForZip(file.path);
+        const blob = await getFileBlob(file.path);
         const relativePath = file.path.slice(prefix.length);
         zip.file(relativePath, blob);
       }
